@@ -1,10 +1,8 @@
 import functools
 import logging
-import random
 import signal
-import socket
 import time
-from mptoolsessing import Process, Queue, Event
+from multiprocessing import Process, Queue, Event
 from queue import Empty, Full
 
 DEFAULT_POLLING_TIMEOUT = 0.02

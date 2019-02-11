@@ -2,16 +2,18 @@ import os
 import socket
 import threading
 
-from examples import mptools_example
-from examples.mptools_example import (
+import mptools
+from mptools import (
     _close_queue,
-    EventMessage,
+    EventMessage
+)
+from examples.mptools_example import (
     StatusWorker,
     ObservationWorker,
     SendWorker,
     ListenWorker,
 )
-from mptools_test import _proc_worker_wrapper_helper
+from mptools.tests.mptools_test import _proc_worker_wrapper_helper
 
 def test_status_worker(caplog):
     class TestStatusWorker(StatusWorker):
@@ -22,8 +24,9 @@ def test_status_worker(caplog):
             self._calls += 1
             return "OKAY" if self._calls % 2 else "NOT-OKAY"
 
-    items = _proc_worker_wrapper_helper(caplog, TestStatusWorker, alarm_secs=0.5)
-    assert len(items) >= 9
+    ALARM_SECS = 0.5
+    items = _proc_worker_wrapper_helper(caplog, TestStatusWorker, alarm_secs=ALARM_SECS)
+    assert len(items) >= int(ALARM_SECS/TestStatusWorker.INTERVAL_SECS)-1
     for idx, item in enumerate(items):
         assert item.msg_src == "TEST", item
         assert item.msg_type == "STATUS", item
@@ -34,8 +37,9 @@ def test_observation_worker(caplog):
     class TestObservationWorker(ObservationWorker):
         INTERVAL_SECS = 0.1
 
-    items = _proc_worker_wrapper_helper(caplog, TestObservationWorker, alarm_secs=0.5)
-    assert len(items) >= 9
+    ALARM_SECS = 0.5
+    items = _proc_worker_wrapper_helper(caplog, TestObservationWorker, alarm_secs=ALARM_SECS)
+    assert len(items) >= int(ALARM_SECS/TestObservationWorker.INTERVAL_SECS)-1
     for idx, item in enumerate(items):
         assert item.msg_src == "TEST", item
         assert item.msg_type == "OBSERVATION", item
@@ -48,7 +52,7 @@ def test_send_worker(caplog):
         def startup(self):
             self.send_file = open(TEST_FILE_NAME, "w")
 
-    send_q = mptools_example.Queue()
+    send_q = mptools.Queue()
     send_q.put(EventMessage("TEST", "OBSERVATION", "SOME DATA 1"))
     send_q.put(EventMessage("TEST", "OBSERVATION", "SOME DATA 2"))
     send_q.put(EventMessage("TEST", "OBSERVATION", "SOME DATA 3"))
@@ -73,10 +77,10 @@ def test_listen_worker(caplog):
             assert request.msg == f"REQUEST {self._test_hook_idx + 1}"
             self.reply_q.put(request.msg.replace("REQUEST", "REPLY"))
 
-    startup_evt = mptools_example.Event()
-    shutdown_evt = mptools_example.Event()
-    event_q = mptools_example.Queue()
-    reply_q = mptools_example.Queue()
+    startup_evt = mptools.Event()
+    shutdown_evt = mptools.Event()
+    event_q = mptools.Queue()
+    reply_q = mptools.Queue()
     lw = TestListenWorker('TEST', startup_evt, shutdown_evt, event_q, reply_q)
     try:
         lw.startup()
