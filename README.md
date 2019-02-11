@@ -7,6 +7,7 @@ This project began while working on a number of IoT projects and was fleshed out
 writing up a talk proposal and blog post based on what I'd learned. _TODO: Url goes here_
 
 Project Home: https://github.com/PamelaM/mptools
+Build Status: [![Build Status](https://travis-ci.org/PamelaM/mptools.svg?branch=master)](https://travis-ci.org/PamelaM/mptools)
 
 Examples
 --------

@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name='mptools',
-    version='0.1dev',
+    version='0.1.1dev',
     author="Pamela McA'Nulty",
     author_email='pamela@mcanulty.com',
     packages=setuptools.find_packages(),
