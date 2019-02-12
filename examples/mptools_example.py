@@ -3,7 +3,7 @@ import random
 import socket
 import multiprocessing as mp
 
-from mptools._mptools import (
+from mptools import (
     init_signals,
     default_signal_handler,
     MainContext,
