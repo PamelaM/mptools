@@ -238,3 +238,48 @@ class Proc:
         if self.proc.is_alive():
             self.log(logging.DEBUG, f"Proc.__init__ terminating : {self.name} after waiting {wait_time:7.4f} seconds")
             self.proc.terminate()
+
+
+# -- Main Wrappers
+class MainContext:
+    STOP_WAIT_SECS = 3.0
+
+    def __init__(self):
+        self.procs = []
+        self.queues = []
+        self.log = functools.partial(logger, "MAIN")
+
+    def Proc(self, *args, **kwargs):
+        proc = Proc(*args, **kwargs)
+        self.procs.append(proc)
+        return proc
+
+    def MPQueue(self, *args, **kwargs):
+        q = MPQueue(*args, **kwargs)
+        self.queues.append(q)
+        return q
+
+    def stop_procs(self):
+        end_time = time.time() + self.STOP_WAIT_SECS
+
+        self.procs.reverse()
+        for proc in self.procs:
+            join_secs = _sleep_secs(self.STOP_WAIT_SECS, end_time)
+            proc.proc.join(join_secs)
+
+        while self.procs:
+            proc = self.procs.pop(0)
+            if proc.proc.is_alive():
+                self.log(logging.ERROR, f"Terminating process {proc.name}")
+                proc.proc.terminate()
+            else:
+                exitcode = proc.proc.exitcode
+                self.log(
+                    logging.ERROR if exitcode else logging.DEBUG,
+                    f"Process {proc.name} ended with exitcode {exitcode}"
+                )
+
+    def stop_queues(self):
+        while self.queues:
+            q = self.queues.pop(0)
+            q.safe_close()

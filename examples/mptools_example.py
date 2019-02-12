@@ -1,17 +1,12 @@
-import functools
 import logging
 import random
 import socket
-import time
-from multiprocessing import Event
+import multiprocessing as mp
 
 from mptools._mptools import (
-    MPQueue,
-    _sleep_secs,
     init_signals,
     default_signal_handler,
-    Proc,
-    logger,
+    MainContext,
     EventMessage,
     ProcWorker,
     TimerProcWorker,
@@ -97,24 +92,22 @@ def request_handler(event, reply_q):
 
 
 def main():
-    log = functools.partial(logger, "MAIN")
-    shutdown_evt = Event()
+    main_ctx = MainContext()
+    shutdown_evt = mp.Event()
 
     init_signals(shutdown_evt, default_signal_handler, default_signal_handler)
 
-    event_q = MPQueue()
-    reply_q = MPQueue()
-    send_q = MPQueue()
-
-    queues = [event_q, reply_q, send_q]
-    procs = []
+    # -- This queue gets the terminating "END" message, so create it _first_,
+    # and if it raises an exception, nothing will need to get cleaned up
+    send_q = main_ctx.MPQueue()
     try:
-        procs = [
-            Proc("SEND", SendWorker, shutdown_evt, event_q, send_q),
-            Proc("LISTEN", ListenWorker, shutdown_evt, event_q, reply_q),
-            Proc("STATUS", StatusWorker, shutdown_evt, event_q),
-            Proc("OBSERVATION", ObservationWorker, shutdown_evt, event_q),
-        ]
+        event_q = main_ctx.MPQueue()
+        reply_q = main_ctx.MPQueue()
+
+        main_ctx.Proc("SEND", SendWorker, shutdown_evt, event_q, send_q)
+        main_ctx.Proc("LISTEN", ListenWorker, shutdown_evt, event_q, reply_q)
+        main_ctx.Proc("STATUS", StatusWorker, shutdown_evt, event_q)
+        main_ctx.Proc("OBSERVATION", ObservationWorker, shutdown_evt, event_q)
 
         while not shutdown_evt.is_set():
             event = event_q.safe_get()
@@ -129,43 +122,24 @@ def main():
             elif event.msg_type == "REQUEST":
                 request_handler(event, reply_q)
             elif event.msg_type == "FATAL":
-                log(logging.INFO, f"Fatal Event received: {event.msg}")
+                main_ctx.log(logging.INFO, f"Fatal Event received: {event.msg}")
                 break
             elif event.msg_type == "END":
-                log(logging.INFO, f"Shutdown Event received: {event.msg}")
+                main_ctx.log(logging.INFO, f"Shutdown Event received: {event.msg}")
                 break
             else:
-                log(logging.ERROR, f"Unknown Event: {event}")
+                main_ctx.log(logging.ERROR, f"Unknown Event: {event}")
 
     except Exception as exc:
         # -- This is the main thread, so this will shut down the whole thing
-        log(logging.ERROR, f"Exception: {exc}")
+        main_ctx.log(logging.ERROR, f"Exception: {exc}")
         raise
 
     finally:
         shutdown_evt.set()
         send_q.put("END")
-
-        STOP_WAIT_SECS = 3.0
-        end_time = time.time() + STOP_WAIT_SECS
-        procs.reverse()
-        for proc in procs:
-            join_secs = _sleep_secs(STOP_WAIT_SECS, end_time)
-            proc.proc.join(join_secs)
-
-        for proc in procs:
-            if proc.proc.is_alive():
-                log(logging.ERROR, f"Terminating process {proc.name}")
-                proc.proc.terminate()
-            else:
-                exitcode = proc.proc.exitcode
-                log(
-                    logging.ERROR if exitcode else logging.DEBUG,
-                    f"Process {proc.name} ended with exitcode {exitcode}"
-                )
-
-        for q in queues:
-            q.safe_close()
+        main_ctx.stop_procs()
+        main_ctx.stop_queues()
 
 
 if __name__ == "__main__":
