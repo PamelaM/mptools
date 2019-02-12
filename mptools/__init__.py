@@ -1,14 +1,6 @@
-from multiprocessing import (
-    Event,
-    Process,
-    Queue,
-)
 from mptools._mptools import (
     logger,
-    _queue_get,
-    _queue_try_put,
-    _drain_queue,
-    _close_queue,
+    MPQueue,
     _sleep_secs,
     SignalObject,
     init_signal,

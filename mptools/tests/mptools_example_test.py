@@ -2,9 +2,9 @@ import os
 import socket
 import threading
 
-import mptools
+import multiprocessing as mp
 from mptools import (
-    _close_queue,
+    MPQueue,
     EventMessage
 )
 from examples.mptools_example import (
@@ -52,7 +52,7 @@ def test_send_worker(caplog):
         def startup(self):
             self.send_file = open(TEST_FILE_NAME, "w")
 
-    send_q = mptools.Queue()
+    send_q = MPQueue()
     send_q.put(EventMessage("TEST", "OBSERVATION", "SOME DATA 1"))
     send_q.put(EventMessage("TEST", "OBSERVATION", "SOME DATA 2"))
     send_q.put(EventMessage("TEST", "OBSERVATION", "SOME DATA 3"))
@@ -66,7 +66,7 @@ def test_send_worker(caplog):
             for idx, line in enumerate(f):
                 assert line == f"OBSERVATION::SOME DATA {idx + 1}\n"
     finally:
-        _close_queue(send_q)
+        send_q.safe_close()
         if os.path.exists(TEST_FILE_NAME):
             os.remove(TEST_FILE_NAME)
 
@@ -77,10 +77,10 @@ def test_listen_worker(caplog):
             assert request.msg == f"REQUEST {self._test_hook_idx + 1}"
             self.reply_q.put(request.msg.replace("REQUEST", "REPLY"))
 
-    startup_evt = mptools.Event()
-    shutdown_evt = mptools.Event()
-    event_q = mptools.Queue()
-    reply_q = mptools.Queue()
+    startup_evt = mp.Event()
+    shutdown_evt = mp.Event()
+    event_q = MPQueue()
+    reply_q = MPQueue()
     lw = TestListenWorker('TEST', startup_evt, shutdown_evt, event_q, reply_q)
     try:
         lw.startup()
@@ -109,5 +109,5 @@ def test_listen_worker(caplog):
     finally:
         lw.shutdown()
 
-    _close_queue(event_q)
-    _close_queue(reply_q)
+    event_q.safe_close()
+    reply_q.safe_close()

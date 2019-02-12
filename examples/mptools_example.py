@@ -3,12 +3,11 @@ import logging
 import random
 import socket
 import time
-from multiprocessing import Queue, Event
+from multiprocessing import Event
 
 from mptools._mptools import (
-    _queue_get,
+    MPQueue,
     _sleep_secs,
-    _close_queue,
     init_signals,
     default_signal_handler,
     Proc,
@@ -85,7 +84,7 @@ class ListenWorker(ProcWorker):
             self.log(logging.DEBUG, f"Received {buffer}")
             self.event_q.put(EventMessage("LISTEN", "REQUEST", buffer))
             self._test_hook()
-            reply = _queue_get(self.reply_q, timeout=self.SOCKET_TIMEOUT)
+            reply = self.reply_q.safe_get(timeout=self.SOCKET_TIMEOUT)
             self.log(logging.DEBUG, f"Sending Reply {reply}")
             clientsocket.send(reply.encode("utf-8"))
         finally:
@@ -103,9 +102,9 @@ def main():
 
     init_signals(shutdown_evt, default_signal_handler, default_signal_handler)
 
-    event_q = Queue()
-    reply_q = Queue()
-    send_q = Queue()
+    event_q = MPQueue()
+    reply_q = MPQueue()
+    send_q = MPQueue()
 
     queues = [event_q, reply_q, send_q]
     procs = []
@@ -118,7 +117,7 @@ def main():
         ]
 
         while not shutdown_evt.is_set():
-            event = _queue_get(event_q)
+            event = event_q.safe_get()
             if not event:
                 continue
             elif event.msg_type == "STATUS":
@@ -166,7 +165,7 @@ def main():
                 )
 
         for q in queues:
-            _close_queue(q)
+            q.safe_close()
 
 
 if __name__ == "__main__":

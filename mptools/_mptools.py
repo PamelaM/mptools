@@ -2,7 +2,8 @@ import functools
 import logging
 import signal
 import time
-from multiprocessing import Process, Queue, Event
+import multiprocessing as mp
+import multiprocessing.queues as mpq
 from queue import Empty, Full
 
 DEFAULT_POLLING_TIMEOUT = 0.02
@@ -19,36 +20,44 @@ def logger(name, level, msg):
 
 # -- Queue handling support
 
-def _queue_get(q, timeout=DEFAULT_POLLING_TIMEOUT):
-    try:
-        if timeout is None:
-            return q.get(block=False)
-        else:
-            return q.get(block=True, timeout=timeout)
-    except Empty:
-        return None
+class MPQueue(mpq.Queue):
 
+    # -- See StackOverflow Article :
+    #   https://stackoverflow.com/questions/39496554/cannot-subclass-multiprocessing-queue-in-python-3-5
+    #
+    # -- tldr; mp.Queue is a _method_ that returns an mpq.Queue object.  That object
+    # requires a context for proper operation, so this __init__ does that work as well.
+    def __init__(self,*args,**kwargs):
+        ctx = mp.get_context()
+        super().__init__(*args, **kwargs, ctx=ctx)
 
-def _queue_try_put(q, item, timeout=DEFAULT_POLLING_TIMEOUT):
-    try:
-        q.put(item, block=False, timeout=timeout)
-        return True
-    except Full:
-        return False
+    def safe_get(self, timeout=DEFAULT_POLLING_TIMEOUT):
+        try:
+            if timeout is None:
+                return self.get(block=False)
+            else:
+                return self.get(block=True, timeout=timeout)
+        except Empty:
+            return None
 
+    def safe_put(self, item, timeout=DEFAULT_POLLING_TIMEOUT):
+        try:
+            self.put(item, block=False, timeout=timeout)
+            return True
+        except Full:
+            return False
 
-def _drain_queue(q):
-    got = _queue_get(q)
-    while got:
-        yield got
-        got = _queue_get(q)
+    def drain(self):
+        item = self.safe_get()
+        while item:
+            yield item
+            item = self.safe_get()
 
-
-def _close_queue(q):
-    num_left = sum(1 for ignored in _drain_queue(q))
-    q.close()
-    q.join_thread()
-    return num_left
+    def safe_close(self):
+        num_left = sum(1 for __ in self.drain())
+        self.close()
+        self.join_thread()
+        return num_left
 
 
 # -- useful function
@@ -149,10 +158,10 @@ class ProcWorker:
             self.startup_event.set()
             self.main_loop()
             self.log(logging.INFO, "Normal Shutdown")
-            _queue_try_put(self.event_q, EventMessage(self.name, "SHUTDOWN", "Normal"))
+            self.event_q.safe_put(EventMessage(self.name, "SHUTDOWN", "Normal"))
         except Exception as exc:
             self.log(logging.ERROR, f"Exception Shutdown: {exc}")
-            _queue_try_put(self.event_q, EventMessage(self.name, "FATAL", f"{exc}"))
+            self.event_q.safe_put(EventMessage(self.name, "FATAL", f"{exc}"))
             raise
         finally:
             self.shutdown()
@@ -190,7 +199,7 @@ class QueueProcWorker(ProcWorker):
     def main_loop(self):
         self.log(logging.DEBUG, "Entering QueueProcWorker.main_loop")
         while not self.shutdown_event.is_set():
-            item = _queue_get(self.work_q)
+            item = self.work_q.safe_get()
             if not item:
                 continue
             self.log(logging.DEBUG, f"QueueProcWorker.main_loop received '{item}' message")
@@ -212,8 +221,8 @@ class Proc:
         self.log = functools.partial(logger, f'{name} Worker')
         self.name = name
         self.shutdown_event = shutdown_event
-        self.startup_event = Event()
-        self.proc = Process(target=proc_worker_wrapper,
+        self.startup_event = mp.Event()
+        self.proc = mp.Process(target=proc_worker_wrapper,
                             args=(worker_class, name, self.startup_event, shutdown_event, event_q, *args))
         self.log(logging.DEBUG, f"Proc.__init__ starting : {name}")
         self.proc.start()

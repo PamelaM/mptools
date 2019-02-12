@@ -5,14 +5,11 @@ import time
 
 import pytest
 
-import multiprocessing
+import multiprocessing as mp
 import mptools._mptools
 from mptools import (
     logger,
-    _queue_get,
-    _queue_try_put,
-    _drain_queue,
-    _close_queue,
+    MPQueue,
     _sleep_secs,
     SignalObject,
     init_signal,
@@ -34,48 +31,48 @@ def test_logger(caplog):
     assert ' 2:0' in caplog.text
 
 
-def test_queue_get():
-    Q = mptools.Queue()
+def test_mpqueue_get():
+    Q = MPQueue()
 
-    item = _queue_get(Q, None)
+    item = Q.safe_get(None)
     assert item is None
 
     Q.put("ITEM1")
     Q.put("ITEM2")
 
-    assert _queue_get(Q, 0.02) == "ITEM1"
-    assert _queue_get(Q, 0.02) == "ITEM2"
-    assert _queue_get(Q, 0.02) is None
-    assert _queue_get(Q, None) is None
+    assert Q.safe_get( 0.02) == "ITEM1"
+    assert Q.safe_get( 0.02) == "ITEM2"
+    assert Q.safe_get( 0.02) is None
+    assert Q.safe_get( None) is None
 
-    num_left = _close_queue(Q)
+    num_left = Q.safe_close()
     assert num_left == 0
 
 
 def test_queue_put():
-    Q = mptools.Queue(2)
-    assert _queue_try_put(Q, "ITEM1")
-    assert _queue_try_put(Q, "ITEM2")
-    assert not _queue_try_put(Q, "ITEM3")
+    Q = MPQueue(2)
+    assert Q.safe_put( "ITEM1")
+    assert Q.safe_put( "ITEM2")
+    assert not Q.safe_put( "ITEM3")
 
-    num_left = _close_queue(Q)
+    num_left = Q.safe_close()
     assert num_left == 2
 
 
 def test_drain_queue():
-    Q = mptools.Queue()
+    Q = MPQueue()
 
-    items = list(_drain_queue(Q))
+    items = list(Q.drain())
     assert items == []
 
     expected = [f"ITEM{idx}" for idx in range(10)]
     for item in expected:
         Q.put(item)
 
-    items = list(_drain_queue(Q))
+    items = list(Q.drain())
     assert items == expected
 
-    num_left = _close_queue(Q)
+    num_left = Q.safe_close()
     assert num_left == 0
 
 
@@ -91,7 +88,7 @@ def test_sleep_secs():
 
 def test_signal_handling():
     pid = os.getpid()
-    evt = mptools.Event()
+    evt = mp.Event()
     so = SignalObject(evt)
     init_signal(signal.SIGINT, so, KeyboardInterrupt, default_signal_handler)
     assert not so.shutdown_event.is_set()
@@ -133,7 +130,7 @@ def test_proc_worker_good_args():
 
 def test_proc_worker_init_signals():
     pid = os.getpid()
-    evt = mptools.Event()
+    evt = mp.Event()
     pw = ProcWorker("TEST", 1, evt, 3, )
     so = pw.init_signals()
 
@@ -156,9 +153,9 @@ def test_proc_worker_init_signals():
 
 
 def test_proc_worker_run(caplog):
-    startup_evt = multiprocessing.Event()
-    shutdown_evt = multiprocessing.Event()
-    event_q = multiprocessing.Queue()
+    startup_evt = mp.Event()
+    shutdown_evt = mp.Event()
+    event_q = MPQueue()
 
     caplog.set_level(logging.INFO)
     pw = ProcWorkerTest("TEST", startup_evt, shutdown_evt, event_q, "ARG1", "ARG2")
@@ -169,7 +166,7 @@ def test_proc_worker_run(caplog):
 
     assert startup_evt.is_set()
     assert shutdown_evt.is_set()
-    item = _queue_get(event_q)
+    item = event_q.safe_get()
     assert item
     assert item.msg_src == "TEST"
     assert item.msg_type == "SHUTDOWN"
@@ -178,9 +175,9 @@ def test_proc_worker_run(caplog):
 
 
 def _proc_worker_wrapper_helper(caplog, worker_class, args=None, expect_shutdown_evt=True, alarm_secs=1.0):
-    startup_evt = multiprocessing.Event()
-    shutdown_evt = multiprocessing.Event()
-    event_q = multiprocessing.Queue()
+    startup_evt = mp.Event()
+    shutdown_evt = mp.Event()
+    event_q = MPQueue()
     if args is None:
         args = ()
 
@@ -194,7 +191,7 @@ def _proc_worker_wrapper_helper(caplog, worker_class, args=None, expect_shutdown
     proc_worker_wrapper(worker_class, "TEST", startup_evt, shutdown_evt, event_q, *args)
     assert startup_evt.is_set()
     assert shutdown_evt.is_set() == expect_shutdown_evt
-    items = list(_drain_queue(event_q))
+    items = list(event_q.drain())
     assert items
     last_item = items[-1]
     assert last_item.msg_src == "TEST"
@@ -216,16 +213,16 @@ class ProcWorkerException(ProcWorker):
 
 
 def test_proc_worker_exception(caplog):
-    startup_evt = multiprocessing.Event()
-    shutdown_evt = multiprocessing.Event()
-    event_q = multiprocessing.Queue()
+    startup_evt = mp.Event()
+    shutdown_evt = mp.Event()
+    event_q = MPQueue()
 
     caplog.set_level(logging.INFO)
     with pytest.raises(NameError):
         proc_worker_wrapper(ProcWorkerException, "TEST", startup_evt, shutdown_evt, event_q)
     assert startup_evt.is_set()
     assert not shutdown_evt.is_set()
-    item = _queue_get(event_q)
+    item = event_q.safe_get()
     assert item
     assert item.msg_src == "TEST"
     assert item.msg_type == "FATAL"
@@ -258,7 +255,7 @@ class QueueProcWorkerTest(QueueProcWorker):
 
 
 def test_queue_proc_worker(caplog):
-    work_q = multiprocessing.Queue()
+    work_q = MPQueue()
     work_q.put(1)
     work_q.put(2)
     work_q.put(3)
@@ -272,17 +269,17 @@ def test_queue_proc_worker(caplog):
 
 
 def test_proc(caplog):
-    shutdown_evt = multiprocessing.Event()
-    event_q = multiprocessing.Queue()
+    shutdown_evt = mp.Event()
+    event_q = MPQueue()
     caplog.set_level(logging.INFO)
     proc = Proc("TEST", TimerProcWorkerTest, shutdown_evt, event_q)
 
     for idx in range(4):
-        item = _queue_get(event_q, 1.0)
+        item = event_q.safe_get(1.0)
         assert item, f"idx: {idx}"
         assert item.startswith(f'TIMER {idx + 1} [')
 
-    item = _queue_get(event_q, 1.0)
+    item = event_q.safe_get(1.0)
     assert item.msg_src == "TEST"
     assert item.msg_type == "SHUTDOWN"
     assert item.msg == "Normal"
