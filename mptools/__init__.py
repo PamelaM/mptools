@@ -11,7 +11,7 @@ from mptools._mptools import (
     TimerProcWorker,
     QueueProcWorker,
     Proc,
-    start_time,
     EventMessage,
     MainContext,
+    TerminateInterrupt,
 )

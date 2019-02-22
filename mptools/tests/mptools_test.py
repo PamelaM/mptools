@@ -19,6 +19,8 @@ from mptools import (
     TimerProcWorker,
     QueueProcWorker,
     Proc,
+    MainContext,
+    TerminateInterrupt
 )
 
 
@@ -152,6 +154,21 @@ def test_proc_worker_init_signals():
     assert so.shutdown_event.is_set()
 
 
+def test_proc_worker_no_main_func(caplog):
+    startup_evt = mp.Event()
+    shutdown_evt = mp.Event()
+    event_q = MPQueue()
+
+    try:
+        caplog.set_level(logging.INFO)
+        pw = ProcWorker("TEST", startup_evt, shutdown_evt, event_q)
+        with pytest.raises(NotImplementedError):
+            pw.main_func()
+
+    finally:
+        event_q.safe_close()
+
+
 def test_proc_worker_run(caplog):
     startup_evt = mp.Event()
     shutdown_evt = mp.Event()
@@ -268,7 +285,23 @@ def test_queue_proc_worker(caplog):
     assert items == [f'DONE {idx + 1}' for idx in range(4)]
 
 
-def test_proc(caplog):
+def test_proc_start_hangs(caplog):
+    class StartHangWorker(ProcWorker):
+        def startup(self):
+            while True:
+                time.sleep(1.0)
+
+    shutdown_evt = mp.Event()
+    event_q = MPQueue()
+    caplog.set_level(logging.INFO)
+    Proc.STARTUP_WAIT_SECS = 0.2
+    try:
+        with pytest.raises(RuntimeError):
+            proc = Proc("TEST", StartHangWorker, shutdown_evt, event_q)
+    finally:
+        Proc.STARTUP_WAIT_SECS = 3.0
+
+def test_proc_full_stop(caplog):
     shutdown_evt = mp.Event()
     event_q = MPQueue()
     caplog.set_level(logging.INFO)
@@ -284,7 +317,64 @@ def test_proc(caplog):
     assert item.msg_type == "SHUTDOWN"
     assert item.msg == "Normal"
 
-    proc.stop(wait_time=0.5)
+    proc.full_stop(wait_time=0.5)
 
     assert not proc.proc.is_alive()
+
+
+def test_main_context_stop_queues():
+    mctx = MainContext()
+    q1 = mctx.MPQueue()
+    q1.put("SOMETHING 1")
+    q2 = mctx.MPQueue()
+    q2.put("SOMETHING 2")
+
+    assert mctx.stop_queues() == 2
+
+
+def _test_stop_procs(cap_log, proc_name, worker_class):
+    cap_log.set_level(logging.DEBUG)
+    mctx = MainContext()
+    try:
+        mctx.STOP_WAIT_SECS = 0.05
+        mctx.Proc(proc_name, worker_class)
+
+        return mctx.stop_procs()
+    finally:
+        mctx.stop_queues()
+
+def test_main_context_stop_procs_clean(caplog):
+    class CleanProcWorker(ProcWorker):
+        def main_func(self):
+            time.sleep(0.001)
+            return
+
+    num_failed, num_terminated = _test_stop_procs(caplog, "CLEAN", CleanProcWorker)
+    assert num_failed == 0
+    assert num_terminated == 0
+
+def test_main_context_stop_procs_fail(caplog):
+    class FailProcWorker(ProcWorker):
+        def main_func(self):
+            import sys
+            time.sleep(0.001)
+            sys.exit(-1)
+
+    num_failed, num_terminated = _test_stop_procs(caplog, "FAIL", FailProcWorker)
+    assert num_failed == 1
+    assert num_terminated == 0
+
+
+def test_main_context_stop_procs_hung(caplog):
+    class HangingProcWorker(ProcWorker):
+        def main_loop(self):
+            try:
+                while True:
+                    time.sleep(5.0)
+            except TerminateInterrupt:
+                pass
+
+    num_failed, num_terminated = _test_stop_procs(caplog, "HANG", HangingProcWorker)
+    assert num_failed == 0
+    assert num_terminated == 1
 

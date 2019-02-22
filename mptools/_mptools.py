@@ -149,7 +149,7 @@ class ProcWorker:
 
     def main_func(self):
         self.log(logging.DEBUG, "Entering main_func")
-        raise NotImplementedError("ProcWorker.main_func is not implemented")
+        raise NotImplementedError(f"{self.__class__.__name__}.main_func is not implemented")
 
     def run(self):
         self.init_signals()
@@ -187,9 +187,6 @@ class TimerProcWorker(ProcWorker):
                 self.main_func()
                 next_time = time.time() + self.INTERVAL_SECS
 
-    def main_func(self):
-        raise NotImplementedError("TimerProcWorker.main_func is not implemented")
-
 
 class QueueProcWorker(ProcWorker):
     def init_args(self, args):
@@ -207,9 +204,6 @@ class QueueProcWorker(ProcWorker):
                 break
             else:
                 self.main_func(item)
-
-    def main_func(self, item):
-        raise NotImplementedError("QueueProcWorker.main_func is not implemented")
 
 
 # -- Process Wrapper
@@ -229,15 +223,30 @@ class Proc:
         started = self.startup_event.wait(timeout=Proc.STARTUP_WAIT_SECS)
         self.log(logging.DEBUG, f"Proc.__init__ starting : {name} got {started}")
         if not started:
+            self.terminate()
             raise RuntimeError(f"Process {name} failed to startup after {Proc.STARTUP_WAIT_SECS} seconds")
 
-    def stop(self, wait_time):
-        self.log(logging.DEBUG, f"Proc.__init__ stoping : {self.name}")
+    def full_stop(self, wait_time):
+        self.log(logging.DEBUG, f"Proc.full_stop stoping : {self.name}")
         self.shutdown_event.set()
         self.proc.join(wait_time)
         if self.proc.is_alive():
-            self.log(logging.DEBUG, f"Proc.__init__ terminating : {self.name} after waiting {wait_time:7.4f} seconds")
+            self.terminate()
+
+    def terminate(self):
+        self.log(logging.DEBUG, f"Proc.terminate terminating : {self.name}")
+        NUM_TRIES = 3
+        tries = NUM_TRIES
+        while tries and self.proc.is_alive():
             self.proc.terminate()
+            time.sleep(0.01)
+            tries -= 1
+
+        if self.proc.is_alive():
+            self.log(logging.ERROR, f"Proc.terminate failed to terminate {self.name} after {NUM_TRIES} attempts")
+        else:
+            self.log(logging.INFO, f"Proc.terminate terminated {self.name} after {NUM_TRIES-tries} attempt(s)")
+
 
 
 # -- Main Wrappers
@@ -248,9 +257,13 @@ class MainContext:
         self.procs = []
         self.queues = []
         self.log = functools.partial(logger, "MAIN")
+        self.shutdown_event = mp.Event()
+        self.event_queue = self.MPQueue()
 
-    def Proc(self, *args, **kwargs):
-        proc = Proc(*args, **kwargs)
+    def Proc(self, name, worker_class, *args, **kwargs):
+        kwargs["shutdown_event"] = self.shutdown_event
+        kwargs["event_q"] = self.event_queue
+        proc = Proc(name, worker_class, *args, **kwargs)
         self.procs.append(proc)
         return proc
 
@@ -260,26 +273,38 @@ class MainContext:
         return q
 
     def stop_procs(self):
-        end_time = time.time() + self.STOP_WAIT_SECS
+        self.shutdown_event.set()
 
-        self.procs.reverse()
+        end_time = time.time() + self.STOP_WAIT_SECS
+        num_terminated = 0
+        num_failed = 0
+
+        # -- Wait up to STOP_WAIT_SECS for all processes to complete
         for proc in self.procs:
             join_secs = _sleep_secs(self.STOP_WAIT_SECS, end_time)
             proc.proc.join(join_secs)
 
+        # -- Clear the procs list and _terminate_ any procs that
+        # have not yet exited
         while self.procs:
-            proc = self.procs.pop(0)
+            proc = self.procs.pop()
             if proc.proc.is_alive():
-                self.log(logging.ERROR, f"Terminating process {proc.name}")
-                proc.proc.terminate()
+                proc.terminate()
+                num_terminated += 1
             else:
                 exitcode = proc.proc.exitcode
-                self.log(
-                    logging.ERROR if exitcode else logging.DEBUG,
-                    f"Process {proc.name} ended with exitcode {exitcode}"
-                )
+                if exitcode:
+                    self.log(logging.ERROR, f"Process {proc.name} ended with exitcode {exitcode}")
+                    num_failed += 1
+                else:
+                    self.log(logging.DEBUG, f"Process {proc.name} stopped successfully")
+
+        return num_failed, num_terminated
 
     def stop_queues(self):
+        num_items_left = 0
+        # -- Clear the queues list and close all associated queues
         while self.queues:
             q = self.queues.pop(0)
-            q.safe_close()
+            num_items_left += q.safe_close()
+        return num_items_left
