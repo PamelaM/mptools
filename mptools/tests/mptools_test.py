@@ -8,7 +8,7 @@ import pytest
 import multiprocessing as mp
 import mptools._mptools
 from mptools import (
-    logger,
+    _logger,
     MPQueue,
     _sleep_secs,
     SignalObject,
@@ -27,7 +27,7 @@ from mptools import (
 def test_logger(caplog):
     mptools._mptools.start_time = mptools._mptools.start_time - 121.0
     caplog.set_level(logging.INFO)
-    logger("FOO", logging.INFO, "TESTING")
+    _logger("FOO", logging.INFO, "TESTING")
     assert 'TESTING' in caplog.text
     assert 'FOO' in caplog.text
     assert ' 2:0' in caplog.text
@@ -205,7 +205,7 @@ def _proc_worker_wrapper_helper(caplog, worker_class, args=None, expect_shutdown
         signal.signal(signal.SIGALRM, alarm_handler)
         signal.setitimer(signal.ITIMER_REAL, alarm_secs)
     caplog.set_level(logging.DEBUG)
-    proc_worker_wrapper(worker_class, "TEST", startup_evt, shutdown_evt, event_q, *args)
+    exitcode = proc_worker_wrapper(worker_class, "TEST", startup_evt, shutdown_evt, event_q, *args)
     assert startup_evt.is_set()
     assert shutdown_evt.is_set() == expect_shutdown_evt
     items = list(event_q.drain())
@@ -214,6 +214,7 @@ def _proc_worker_wrapper_helper(caplog, worker_class, args=None, expect_shutdown
     assert last_item.msg_src == "TEST"
     assert last_item.msg_type == "SHUTDOWN"
     assert last_item.msg == "Normal"
+    assert exitcode == 0
 
     return items[:-1]
 
@@ -224,18 +225,17 @@ def test_proc_worker_wrapper(caplog):
     assert f"MAIN_FUNC: ('ARG1', 'ARG2')" in caplog.text
 
 
-class ProcWorkerException(ProcWorker):
-    def main_func(self):
-        raise NameError("Because this doesn't happen often")
-
-
 def test_proc_worker_exception(caplog):
+    class ProcWorkerException(ProcWorker):
+        def main_func(self):
+            raise NameError("Because this doesn't happen often")
+
     startup_evt = mp.Event()
     shutdown_evt = mp.Event()
     event_q = MPQueue()
 
     caplog.set_level(logging.INFO)
-    with pytest.raises(NameError):
+    with pytest.raises(SystemExit):
         proc_worker_wrapper(ProcWorkerException, "TEST", startup_evt, shutdown_evt, event_q)
     assert startup_evt.is_set()
     assert not shutdown_evt.is_set()
@@ -321,6 +321,17 @@ def test_proc_full_stop(caplog):
 
     assert not proc.proc.is_alive()
 
+def test_proc_full_stop_need_terminate(caplog):
+    class NeedTerminateWorker(ProcWorker):
+        def main_loop(self):
+            while True:
+                time.sleep(1.0)
+
+    shutdown_evt = mp.Event()
+    event_q = MPQueue()
+    caplog.set_level(logging.INFO)
+    proc = Proc("TEST", NeedTerminateWorker, shutdown_evt, event_q)
+    proc.full_stop(wait_time=0.1)
 
 def test_main_context_stop_queues():
     mctx = MainContext()
@@ -336,9 +347,10 @@ def _test_stop_procs(cap_log, proc_name, worker_class):
     cap_log.set_level(logging.DEBUG)
     mctx = MainContext()
     try:
-        mctx.STOP_WAIT_SECS = 0.05
+        mctx.STOP_WAIT_SECS = 0.1
         mctx.Proc(proc_name, worker_class)
 
+        time.sleep(0.05)
         return mctx.stop_procs()
     finally:
         mctx.stop_queues()
@@ -356,10 +368,12 @@ def test_main_context_stop_procs_clean(caplog):
 def test_main_context_stop_procs_fail(caplog):
     class FailProcWorker(ProcWorker):
         def main_func(self):
-            import sys
+            self.log(logging.DEBUG, "main_func called")
             time.sleep(0.001)
-            sys.exit(-1)
+            self.log(logging.DEBUG, "main_func raising")
+            raise ValueError("main func value error")
 
+    caplog.set_level(logging.DEBUG)
     num_failed, num_terminated = _test_stop_procs(caplog, "FAIL", FailProcWorker)
     assert num_failed == 1
     assert num_terminated == 0

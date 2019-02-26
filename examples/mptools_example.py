@@ -53,6 +53,7 @@ class ListenWorker(ProcWorker):
         self.reply_q, = args
 
     def startup(self):
+        # -- Called during worker process start up sequence
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.bind(('127.0.0.1', 9999))
@@ -60,6 +61,7 @@ class ListenWorker(ProcWorker):
         self.socket.listen(1)
 
     def shutdown(self):
+        # -- Called when worker process is shutting down
         self.socket.close()
 
     def _test_hook(self):

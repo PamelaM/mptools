@@ -1,6 +1,7 @@
 import functools
 import logging
 import signal
+import sys
 import time
 import multiprocessing as mp
 import multiprocessing.queues as mpq
@@ -11,12 +12,13 @@ MAX_SLEEP_SECS = 0.02
 
 start_time = time.time()
 
-def logger(name, level, msg):
+
+def _logger(name, level, msg, exc_info=None):
     elapsed = time.time() - start_time
     hours = int(elapsed // 60)
     seconds = elapsed - (hours * 60)
-    logging.log(level, f'{hours:3}:{seconds:06.3f} {name:20} {msg}')
-
+    logging.log(level, f'{hours:3}:{seconds:06.3f} {name:20} {msg}',  exc_info=exc_info)
+    print(f'{hours:3}:{seconds:06.3f} {name:20} {msg}')
 
 # -- Queue handling support
 
@@ -118,7 +120,7 @@ class ProcWorker:
 
     def __init__(self, name, startup_event, shutdown_event, event_q, *args):
         self.name = name
-        self.log = functools.partial(logger, f'{self.name} Worker')
+        self.log = functools.partial(_logger, f'{self.name} Worker')
         self.startup_event = startup_event
         self.shutdown_event = shutdown_event
         self.event_q = event_q
@@ -159,17 +161,18 @@ class ProcWorker:
             self.main_loop()
             self.log(logging.INFO, "Normal Shutdown")
             self.event_q.safe_put(EventMessage(self.name, "SHUTDOWN", "Normal"))
-        except Exception as exc:
-            self.log(logging.ERROR, f"Exception Shutdown: {exc}")
+            return 0
+        except BaseException as exc:
+            # -- Catch ALL exceptions, even Terminate and Keyboard interrupt
+            self.log(logging.ERROR, f"Exception Shutdown: {exc}", exc_info=True)
             self.event_q.safe_put(EventMessage(self.name, "FATAL", f"{exc}"))
-            raise
+            # -- TODO: call raise if in some sort of interactive mode
+            if type(exc) in (TerminateInterrupt, KeyboardInterrupt):
+                sys.exit(1)
+            else:
+                sys.exit(2)
         finally:
             self.shutdown()
-
-
-def proc_worker_wrapper(proc_worker_class, name, startup_evt, shutdown_evt, event_q, *args):
-    proc_worker = proc_worker_class(name, startup_evt, shutdown_evt, event_q, *args)
-    proc_worker.run()
 
 
 class TimerProcWorker(ProcWorker):
@@ -208,11 +211,16 @@ class QueueProcWorker(ProcWorker):
 
 # -- Process Wrapper
 
+def proc_worker_wrapper(proc_worker_class, name, startup_evt, shutdown_evt, event_q, *args):
+    proc_worker = proc_worker_class(name, startup_evt, shutdown_evt, event_q, *args)
+    return proc_worker.run()
+
+
 class Proc:
     STARTUP_WAIT_SECS = 3.0
 
     def __init__(self, name, worker_class, shutdown_event, event_q, *args):
-        self.log = functools.partial(logger, f'{name} Worker')
+        self.log = functools.partial(_logger, f'{name} Worker')
         self.name = name
         self.shutdown_event = shutdown_event
         self.startup_event = mp.Event()
@@ -256,7 +264,7 @@ class MainContext:
     def __init__(self):
         self.procs = []
         self.queues = []
-        self.log = functools.partial(logger, "MAIN")
+        self.log = functools.partial(_logger, "MAIN")
         self.shutdown_event = mp.Event()
         self.event_queue = self.MPQueue()
 

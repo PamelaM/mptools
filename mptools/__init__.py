@@ -1,5 +1,5 @@
 from mptools._mptools import (
-    logger,
+    _logger,
     MPQueue,
     _sleep_secs,
     SignalObject,
