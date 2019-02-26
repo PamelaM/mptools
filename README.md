@@ -17,10 +17,19 @@ it doesn't do much.
  * `examples/mptools_example_client.py` is a simple script that exercises the socket
 interface of the example app.
 
+Development
+-----------
+
+ * Clone git repo
+ * Create a virtual environment, Python v 3.6+
+ * pip install -r requirements.txt
+ * pytest --cov=mptools --cov-report html:skip-covered -v
+ * _TODO: Build and test examples_
+ * _TODO: Update Version and make a release_
+
 Roadmap
 --------
  
- * Add a mptools.Queue class
  * Write up proper docs and get them up on Readthedocs
  
  
