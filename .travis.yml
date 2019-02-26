@@ -4,7 +4,8 @@ python:
   - "3.7-dev"  # 3.7 development branch
 # command to install dependencies
 install:
-  - pip install -r requirements.txt
+  - pip install --upgrade pip
+  - pip install --upgrade -r requirements.txt
 # command to run tests
 script:
   - pytest
