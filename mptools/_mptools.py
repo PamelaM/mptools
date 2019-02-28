@@ -268,6 +268,22 @@ class MainContext:
         self.shutdown_event = mp.Event()
         self.event_queue = self.MPQueue()
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type:
+            self.log(logging.ERROR, f"Exception: {exc_val}", exec_info=None)
+
+        self.shutdown_event.set()
+        self.event_queue.put("END")
+
+        self.stop_procs()
+        self.stop_queues()
+
+        return bool(exc_type)
+
+
     def Proc(self, name, worker_class, *args, **kwargs):
         kwargs["shutdown_event"] = self.shutdown_event
         kwargs["event_q"] = self.event_queue

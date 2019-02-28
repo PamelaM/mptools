@@ -78,7 +78,7 @@ class ListenWorker(ProcWorker):
         try:
             clientsocket.settimeout(self.SOCKET_TIMEOUT)
             buffer = clientsocket.recv(1500).decode()
-            self.log(logging.DEBUG, f"Received {buffer}")
+            self.log(logging.DEBUhe G, f"Received {buffer}")
             self.event_q.put(EventMessage("LISTEN", "REQUEST", buffer))
             self._test_hook()
             reply = self.reply_q.safe_get(timeout=self.SOCKET_TIMEOUT)
@@ -94,25 +94,19 @@ def request_handler(event, reply_q):
 
 
 def main():
-    main_ctx = MainContext()
-    shutdown_evt = mp.Event()
+    with MainContext() as main_ctx:
+        init_signals(main_ctx.shutdown_evt, default_signal_handler, default_signal_handler)
 
-    init_signals(shutdown_evt, default_signal_handler, default_signal_handler)
-
-    # -- This queue gets the terminating "END" message, so create it _first_,
-    # and if it raises an exception, nothing will need to get cleaned up
-    send_q = main_ctx.MPQueue()
-    try:
-        event_q = main_ctx.MPQueue()
+        send_q = main_ctx.MPQueue()
         reply_q = main_ctx.MPQueue()
 
-        main_ctx.Proc("SEND", SendWorker, shutdown_evt, event_q, send_q)
-        main_ctx.Proc("LISTEN", ListenWorker, shutdown_evt, event_q, reply_q)
-        main_ctx.Proc("STATUS", StatusWorker, shutdown_evt, event_q)
-        main_ctx.Proc("OBSERVATION", ObservationWorker, shutdown_evt, event_q)
+        main_ctx.Proc("SEND", SendWorker, send_q)
+        main_ctx.Proc("LISTEN", ListenWorker, reply_q)
+        main_ctx.Proc("STATUS", StatusWorker)
+        main_ctx.Proc("OBSERVATION", ObservationWorker)
 
-        while not shutdown_evt.is_set():
-            event = event_q.safe_get()
+        while not main_ctx.shutdown_evt.is_set():
+            event = main_ctx.event_q.safe_get()
             if not event:
                 continue
             elif event.msg_type == "STATUS":
@@ -132,10 +126,7 @@ def main():
             else:
                 main_ctx.log(logging.ERROR, f"Unknown Event: {event}")
 
-    except Exception as exc:
-        # -- This is the main thread, so this will shut down the whole thing
-        main_ctx.log(logging.ERROR, f"Exception: {exc}")
-        raise
+
 
     finally:
         shutdown_evt.set()
