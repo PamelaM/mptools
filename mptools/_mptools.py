@@ -10,15 +10,14 @@ from queue import Empty, Full
 DEFAULT_POLLING_TIMEOUT = 0.02
 MAX_SLEEP_SECS = 0.02
 
-start_time = time.time()
+start_time = time.monotonic()
 
 
 def _logger(name, level, msg, exc_info=None):
-    elapsed = time.time() - start_time
+    elapsed = time.monotonic() - start_time
     hours = int(elapsed // 60)
     seconds = elapsed - (hours * 60)
     logging.log(level, f'{hours:3}:{seconds:06.3f} {name:20} {msg}',  exc_info=exc_info)
-    print(f'{hours:3}:{seconds:06.3f} {name:20} {msg}')
 
 # -- Queue handling support
 
@@ -273,21 +272,18 @@ class MainContext:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type:
-            self.log(logging.ERROR, f"Exception: {exc_val}", exec_info=None)
+            self.log(logging.ERROR, f"Exception: {exc_val}", exc_info=None)
 
-        self.shutdown_event.set()
-        self.event_queue.put("END")
-
-        self.stop_procs()
-        self.stop_queues()
+        self._stopped_procs_result = self.stop_procs()
+        self._stopped_queues_result = self.stop_queues()
 
         return bool(exc_type)
 
 
     def Proc(self, name, worker_class, *args, **kwargs):
-        kwargs["shutdown_event"] = self.shutdown_event
-        kwargs["event_q"] = self.event_queue
-        proc = Proc(name, worker_class, *args, **kwargs)
+        assert "shutdown_event" not in kwargs
+        assert "event_queue" not in kwargs
+        proc = Proc(name, worker_class, self.shutdown_event, self.event_queue, *args, **kwargs)
         self.procs.append(proc)
         return proc
 
@@ -297,8 +293,8 @@ class MainContext:
         return q
 
     def stop_procs(self):
+        self.event_queue.safe_put(EventMessage("stop_procs", "END", "END"))
         self.shutdown_event.set()
-
         end_time = time.time() + self.STOP_WAIT_SECS
         num_terminated = 0
         num_failed = 0

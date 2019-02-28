@@ -1,7 +1,6 @@
 import logging
 import random
 import socket
-import multiprocessing as mp
 
 from mptools import (
     init_signals,
@@ -78,7 +77,7 @@ class ListenWorker(ProcWorker):
         try:
             clientsocket.settimeout(self.SOCKET_TIMEOUT)
             buffer = clientsocket.recv(1500).decode()
-            self.log(logging.DEBUhe G, f"Received {buffer}")
+            self.log(logging.DEBUG, f"Received {buffer}")
             self.event_q.put(EventMessage("LISTEN", "REQUEST", buffer))
             self._test_hook()
             reply = self.reply_q.safe_get(timeout=self.SOCKET_TIMEOUT)
@@ -88,14 +87,19 @@ class ListenWorker(ProcWorker):
             clientsocket.close()
 
 
-def request_handler(event, reply_q):
+def request_handler(event, reply_q, main_ctx):
+    main_ctx.log(logging.DEBUG, f"request_handler - '{event.msg}'")
+    if event.msg == "REQUEST END":
+        main_ctx.log(logging.DEBUG, "request_handler - queued END event")
+        main_ctx.event_queue.safe_put(EventMessage("request_handler", "END", "END"))
+
     reply = f'REPLY {event.id} {event.msg}'
-    reply_q.put(reply)
+    reply_q.safe_put(reply)
 
 
 def main():
     with MainContext() as main_ctx:
-        init_signals(main_ctx.shutdown_evt, default_signal_handler, default_signal_handler)
+        init_signals(main_ctx.shutdown_event, default_signal_handler, default_signal_handler)
 
         send_q = main_ctx.MPQueue()
         reply_q = main_ctx.MPQueue()
@@ -105,8 +109,8 @@ def main():
         main_ctx.Proc("STATUS", StatusWorker)
         main_ctx.Proc("OBSERVATION", ObservationWorker)
 
-        while not main_ctx.shutdown_evt.is_set():
-            event = main_ctx.event_q.safe_get()
+        while not main_ctx.shutdown_event.is_set():
+            event = main_ctx.event_queue.safe_get()
             if not event:
                 continue
             elif event.msg_type == "STATUS":
@@ -116,7 +120,7 @@ def main():
             elif event.msg_type == "ERROR":
                 send_q.put(event)
             elif event.msg_type == "REQUEST":
-                request_handler(event, reply_q)
+                request_handler(event, reply_q, main_ctx)
             elif event.msg_type == "FATAL":
                 main_ctx.log(logging.INFO, f"Fatal Event received: {event.msg}")
                 break
@@ -125,14 +129,6 @@ def main():
                 break
             else:
                 main_ctx.log(logging.ERROR, f"Unknown Event: {event}")
-
-
-
-    finally:
-        shutdown_evt.set()
-        send_q.put("END")
-        main_ctx.stop_procs()
-        main_ctx.stop_queues()
 
 
 if __name__ == "__main__":

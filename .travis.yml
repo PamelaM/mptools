@@ -9,6 +9,7 @@ install:
 # command to run tests
 script:
   - pytest -v --cov-report term --cov=mptools/
+  - ./run_example_test.py
 
 env:
   -   CODECOV_TOKEN="707a398a-3d4a-415e-ab35-014616add4b9"

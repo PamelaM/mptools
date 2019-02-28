@@ -334,26 +334,23 @@ def test_proc_full_stop_need_terminate(caplog):
     proc.full_stop(wait_time=0.1)
 
 def test_main_context_stop_queues():
-    mctx = MainContext()
-    q1 = mctx.MPQueue()
-    q1.put("SOMETHING 1")
-    q2 = mctx.MPQueue()
-    q2.put("SOMETHING 2")
+    with MainContext() as mctx:
+        q1 = mctx.MPQueue()
+        q1.put("SOMETHING 1")
+        q2 = mctx.MPQueue()
+        q2.put("SOMETHING 2")
 
-    assert mctx.stop_queues() == 2
+    # -- 3 == the 2 queued items in this test, and the END event
+    assert mctx._stopped_queues_result == 3
 
 
 def _test_stop_procs(cap_log, proc_name, worker_class):
     cap_log.set_level(logging.DEBUG)
-    mctx = MainContext()
-    try:
+    with MainContext() as mctx:
         mctx.STOP_WAIT_SECS = 0.1
         mctx.Proc(proc_name, worker_class)
-
         time.sleep(0.05)
-        return mctx.stop_procs()
-    finally:
-        mctx.stop_queues()
+    return mctx._stopped_procs_result
 
 def test_main_context_stop_procs_clean(caplog):
     class CleanProcWorker(ProcWorker):
