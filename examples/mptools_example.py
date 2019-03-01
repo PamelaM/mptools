@@ -1,6 +1,8 @@
 import logging
 import random
 import socket
+import sys
+import time
 
 from mptools import (
     init_signals,
@@ -97,8 +99,15 @@ def request_handler(event, reply_q, main_ctx):
     reply_q.safe_put(reply)
 
 
-def main():
+def main(die_in_secs):
+
     with MainContext() as main_ctx:
+        if die_in_secs:
+            die_time = time.time() + die_in_secs
+            main_ctx.log(logging.DEBUG, f"Application die time is in {die_in_secs} seconds")
+        else:
+            die_time = None
+
         init_signals(main_ctx.shutdown_event, default_signal_handler, default_signal_handler)
 
         send_q = main_ctx.MPQueue()
@@ -110,6 +119,8 @@ def main():
         main_ctx.Proc("OBSERVATION", ObservationWorker)
 
         while not main_ctx.shutdown_event.is_set():
+            if die_time and time.time() > die_time:
+                raise RuntimeError("Application has run too long.")
             event = main_ctx.event_queue.safe_get()
             if not event:
                 continue
@@ -133,4 +144,5 @@ def main():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
-    main()
+    die_in_secs = float(sys.argv[1]) if sys.argv[1:] else 0
+    main(die_in_secs)

@@ -148,7 +148,7 @@ class ProcWorker:
         self.log(logging.DEBUG, "Entering shutdown")
         pass
 
-    def main_func(self):
+    def main_func(self, *args):
         self.log(logging.DEBUG, "Entering main_func")
         raise NotImplementedError(f"{self.__class__.__name__}.main_func is not implemented")
 
@@ -272,18 +272,16 @@ class MainContext:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type:
-            self.log(logging.ERROR, f"Exception: {exc_val}", exc_info=None)
+            self.log(logging.ERROR, f"Exception: {exc_val}", exc_info=(exc_type, exc_val, exc_tb))
 
         self._stopped_procs_result = self.stop_procs()
         self._stopped_queues_result = self.stop_queues()
 
-        return bool(exc_type)
+        return True
 
 
-    def Proc(self, name, worker_class, *args, **kwargs):
-        assert "shutdown_event" not in kwargs
-        assert "event_queue" not in kwargs
-        proc = Proc(name, worker_class, self.shutdown_event, self.event_queue, *args, **kwargs)
+    def Proc(self, name, worker_class, *args):
+        proc = Proc(name, worker_class, self.shutdown_event, self.event_queue, *args)
         self.procs.append(proc)
         return proc
 
