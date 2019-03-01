@@ -2,6 +2,7 @@ import socket
 import sys
 import time
 
+
 def one_request(*args):
     ADDRESS = ('127.0.0.1', 9999)
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -21,11 +22,11 @@ def one_request(*args):
 
 print(f"CLIENT: Starting")
 
-if sys.argv[1] and  sys.argv[1] == "AUTO":
+if sys.argv[1] and sys.argv[1] == "AUTO":
     for i in range(3):
         print(f"CLIENT: Waiting 5 seconds")
         time.sleep(5)
-        one_request(f"TEST REQUEST {i+1}")
+        one_request(f"TEST REQUEST {i + 1}")
     print(f"CLIENT: Waiting 5 seconds")
     time.sleep(5)
     one_request("END")

@@ -14,6 +14,7 @@ from mptools import (
     QueueProcWorker,
 )
 
+
 # ----  Example Specific Code starts here
 
 class StatusWorker(TimerProcWorker):
@@ -100,7 +101,6 @@ def request_handler(event, reply_q, main_ctx):
 
 
 def main(die_in_secs):
-
     with MainContext() as main_ctx:
         if die_in_secs:
             die_time = time.time() + die_in_secs

@@ -1,10 +1,10 @@
 import functools
 import logging
+import multiprocessing as mp
+import multiprocessing.queues as mpq
 import signal
 import sys
 import time
-import multiprocessing as mp
-import multiprocessing.queues as mpq
 from queue import Empty, Full
 
 DEFAULT_POLLING_TIMEOUT = 0.02
@@ -17,7 +17,8 @@ def _logger(name, level, msg, exc_info=None):
     elapsed = time.monotonic() - start_time
     hours = int(elapsed // 60)
     seconds = elapsed - (hours * 60)
-    logging.log(level, f'{hours:3}:{seconds:06.3f} {name:20} {msg}',  exc_info=exc_info)
+    logging.log(level, f'{hours:3}:{seconds:06.3f} {name:20} {msg}', exc_info=exc_info)
+
 
 # -- Queue handling support
 
@@ -28,7 +29,7 @@ class MPQueue(mpq.Queue):
     #
     # -- tldr; mp.Queue is a _method_ that returns an mpq.Queue object.  That object
     # requires a context for proper operation, so this __init__ does that work as well.
-    def __init__(self,*args,**kwargs):
+    def __init__(self, *args, **kwargs):
         ctx = mp.get_context()
         super().__init__(*args, **kwargs, ctx=ctx)
 
@@ -65,6 +66,7 @@ class MPQueue(mpq.Queue):
 def _sleep_secs(max_sleep, end_time=999999999999999.9):
     # Calculate time left to sleep, no less than 0
     return max(0.0, min(end_time - time.time(), max_sleep))
+
 
 # -- Standard Event Queue manager
 class EventMessage:
@@ -109,6 +111,7 @@ def init_signals(shutdown_event, int_handler, term_handler):
     init_signal(signal.SIGINT, signal_object, KeyboardInterrupt, int_handler)
     init_signal(signal.SIGTERM, signal_object, TerminateInterrupt, term_handler)
     return signal_object
+
 
 # -- Worker Process classes
 
@@ -224,7 +227,7 @@ class Proc:
         self.shutdown_event = shutdown_event
         self.startup_event = mp.Event()
         self.proc = mp.Process(target=proc_worker_wrapper,
-                            args=(worker_class, name, self.startup_event, shutdown_event, event_q, *args))
+                               args=(worker_class, name, self.startup_event, shutdown_event, event_q, *args))
         self.log(logging.DEBUG, f"Proc.__init__ starting : {name}")
         self.proc.start()
         started = self.startup_event.wait(timeout=Proc.STARTUP_WAIT_SECS)
@@ -252,8 +255,7 @@ class Proc:
         if self.proc.is_alive():
             self.log(logging.ERROR, f"Proc.terminate failed to terminate {self.name} after {NUM_TRIES} attempts")
         else:
-            self.log(logging.INFO, f"Proc.terminate terminated {self.name} after {NUM_TRIES-tries} attempt(s)")
-
+            self.log(logging.INFO, f"Proc.terminate terminated {self.name} after {NUM_TRIES - tries} attempt(s)")
 
 
 # -- Main Wrappers
@@ -278,7 +280,6 @@ class MainContext:
         self._stopped_queues_result = self.stop_queues()
 
         return True
-
 
     def Proc(self, name, worker_class, *args):
         proc = Proc(name, worker_class, self.shutdown_event, self.event_queue, *args)

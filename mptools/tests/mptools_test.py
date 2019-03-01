@@ -1,11 +1,11 @@
 import logging
+import multiprocessing as mp
 import os
 import signal
 import time
 
 import pytest
 
-import multiprocessing as mp
 import mptools._mptools
 from mptools import (
     _logger,
@@ -42,10 +42,10 @@ def test_mpqueue_get():
     Q.put("ITEM1")
     Q.put("ITEM2")
 
-    assert Q.safe_get( 0.02) == "ITEM1"
-    assert Q.safe_get( 0.02) == "ITEM2"
-    assert Q.safe_get( 0.02) is None
-    assert Q.safe_get( None) is None
+    assert Q.safe_get(0.02) == "ITEM1"
+    assert Q.safe_get(0.02) == "ITEM2"
+    assert Q.safe_get(0.02) is None
+    assert Q.safe_get(None) is None
 
     num_left = Q.safe_close()
     assert num_left == 0
@@ -53,9 +53,9 @@ def test_mpqueue_get():
 
 def test_queue_put():
     Q = MPQueue(2)
-    assert Q.safe_put( "ITEM1")
-    assert Q.safe_put( "ITEM2")
-    assert not Q.safe_put( "ITEM3")
+    assert Q.safe_put("ITEM1")
+    assert Q.safe_put("ITEM2")
+    assert not Q.safe_put("ITEM3")
 
     num_left = Q.safe_close()
     assert num_left == 2
@@ -297,9 +297,10 @@ def test_proc_start_hangs(caplog):
     Proc.STARTUP_WAIT_SECS = 0.2
     try:
         with pytest.raises(RuntimeError):
-            proc = Proc("TEST", StartHangWorker, shutdown_evt, event_q)
+            Proc("TEST", StartHangWorker, shutdown_evt, event_q)
     finally:
         Proc.STARTUP_WAIT_SECS = 3.0
+
 
 def test_proc_full_stop(caplog):
     shutdown_evt = mp.Event()
@@ -321,6 +322,7 @@ def test_proc_full_stop(caplog):
 
     assert not proc.proc.is_alive()
 
+
 def test_proc_full_stop_need_terminate(caplog):
     class NeedTerminateWorker(ProcWorker):
         def main_loop(self):
@@ -332,6 +334,7 @@ def test_proc_full_stop_need_terminate(caplog):
     caplog.set_level(logging.INFO)
     proc = Proc("TEST", NeedTerminateWorker, shutdown_evt, event_q)
     proc.full_stop(wait_time=0.1)
+
 
 def test_main_context_stop_queues():
     with MainContext() as mctx:
@@ -352,6 +355,7 @@ def _test_stop_procs(cap_log, proc_name, worker_class):
         time.sleep(0.05)
     return mctx._stopped_procs_result
 
+
 def test_main_context_stop_procs_clean(caplog):
     class CleanProcWorker(ProcWorker):
         def main_func(self):
@@ -361,6 +365,7 @@ def test_main_context_stop_procs_clean(caplog):
     num_failed, num_terminated = _test_stop_procs(caplog, "CLEAN", CleanProcWorker)
     assert num_failed == 0
     assert num_terminated == 0
+
 
 def test_main_context_stop_procs_fail(caplog):
     class FailProcWorker(ProcWorker):
@@ -388,4 +393,3 @@ def test_main_context_stop_procs_hung(caplog):
     num_failed, num_terminated = _test_stop_procs(caplog, "HANG", HangingProcWorker)
     assert num_failed == 0
     assert num_terminated == 1
-

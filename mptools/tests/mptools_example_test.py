@@ -1,19 +1,20 @@
+import multiprocessing as mp
 import os
 import socket
 import threading
 
-import multiprocessing as mp
-from mptools import (
-    MPQueue,
-    EventMessage
-)
 from examples.mptools_example import (
     StatusWorker,
     ObservationWorker,
     SendWorker,
     ListenWorker,
 )
+from mptools import (
+    MPQueue,
+    EventMessage
+)
 from mptools.tests.mptools_test import _proc_worker_wrapper_helper
+
 
 def test_status_worker(caplog):
     class TestStatusWorker(StatusWorker):
@@ -26,7 +27,7 @@ def test_status_worker(caplog):
 
     ALARM_SECS = 0.5
     items = _proc_worker_wrapper_helper(caplog, TestStatusWorker, alarm_secs=ALARM_SECS)
-    assert len(items) >= int(ALARM_SECS/TestStatusWorker.INTERVAL_SECS)-1
+    assert len(items) >= int(ALARM_SECS / TestStatusWorker.INTERVAL_SECS) - 1
     for idx, item in enumerate(items):
         assert item.msg_src == "TEST", item
         assert item.msg_type == "STATUS", item
@@ -39,7 +40,7 @@ def test_observation_worker(caplog):
 
     ALARM_SECS = 0.5
     items = _proc_worker_wrapper_helper(caplog, TestObservationWorker, alarm_secs=ALARM_SECS)
-    assert len(items) >= int(ALARM_SECS/TestObservationWorker.INTERVAL_SECS)-1
+    assert len(items) >= int(ALARM_SECS / TestObservationWorker.INTERVAL_SECS) - 1
     for idx, item in enumerate(items):
         assert item.msg_src == "TEST", item
         assert item.msg_type == "OBSERVATION", item
@@ -48,6 +49,7 @@ def test_observation_worker(caplog):
 
 def test_send_worker(caplog):
     TEST_FILE_NAME = "test_send_file.txt"
+
     class TestSendWorker(SendWorker):
         def startup(self):
             self.send_file = open(TEST_FILE_NAME, "w")
@@ -60,7 +62,8 @@ def test_send_worker(caplog):
     send_q.put(EventMessage("TEST", "OBSERVATION", "SOME DATA 5"))
 
     try:
-        items = _proc_worker_wrapper_helper(caplog, TestSendWorker, args=(send_q,), expect_shutdown_evt=True, alarm_secs=1)
+        items = _proc_worker_wrapper_helper(caplog, TestSendWorker, args=(send_q,), expect_shutdown_evt=True,
+                                            alarm_secs=1)
         assert items == []
         with open("test_send_file.txt", "r") as f:
             for idx, line in enumerate(f):
@@ -69,6 +72,7 @@ def test_send_worker(caplog):
         send_q.safe_close()
         if os.path.exists(TEST_FILE_NAME):
             os.remove(TEST_FILE_NAME)
+
 
 def test_listen_worker(caplog):
     class TestListenWorker(ListenWorker):
