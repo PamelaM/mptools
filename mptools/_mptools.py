@@ -254,8 +254,10 @@ class Proc:
 
         if self.proc.is_alive():
             self.log(logging.ERROR, f"Proc.terminate failed to terminate {self.name} after {NUM_TRIES} attempts")
+            return False
         else:
             self.log(logging.INFO, f"Proc.terminate terminated {self.name} after {NUM_TRIES - tries} attempt(s)")
+            return True
 
 
 # -- Main Wrappers
@@ -279,7 +281,8 @@ class MainContext:
         self._stopped_procs_result = self.stop_procs()
         self._stopped_queues_result = self.stop_queues()
 
-        return True
+        # -- Don't eat exceptions that reach here.
+        return not exc_type
 
     def Proc(self, name, worker_class, *args):
         proc = Proc(name, worker_class, self.shutdown_event, self.event_queue, *args)
@@ -305,11 +308,14 @@ class MainContext:
 
         # -- Clear the procs list and _terminate_ any procs that
         # have not yet exited
+        still_running = []
         while self.procs:
             proc = self.procs.pop()
             if proc.proc.is_alive():
-                proc.terminate()
-                num_terminated += 1
+                if proc.terminate():
+                    num_terminated += 1
+                else:
+                    still_running.append(proc)
             else:
                 exitcode = proc.proc.exitcode
                 if exitcode:
@@ -318,6 +324,7 @@ class MainContext:
                 else:
                     self.log(logging.DEBUG, f"Process {proc.name} stopped successfully")
 
+        self.procs = still_running
         return num_failed, num_terminated
 
     def stop_queues(self):

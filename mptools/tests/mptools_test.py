@@ -353,8 +353,15 @@ def _test_stop_procs(cap_log, proc_name, worker_class):
         mctx.STOP_WAIT_SECS = 0.1
         mctx.Proc(proc_name, worker_class)
         time.sleep(0.05)
-    return mctx._stopped_procs_result
 
+    for proc in mctx.procs:
+        proc.terminate()
+    return mctx._stopped_procs_result, len(mctx.procs)
+
+def test_main_context_exception():
+    with pytest.raises(ValueError):
+        with MainContext():
+            raise ValueError("Yep, this is a value Error")
 
 def test_main_context_stop_procs_clean(caplog):
     class CleanProcWorker(ProcWorker):
@@ -362,9 +369,10 @@ def test_main_context_stop_procs_clean(caplog):
             time.sleep(0.001)
             return
 
-    num_failed, num_terminated = _test_stop_procs(caplog, "CLEAN", CleanProcWorker)
+    (num_failed, num_terminated), num_still_running = _test_stop_procs(caplog, "CLEAN", CleanProcWorker)
     assert num_failed == 0
     assert num_terminated == 0
+    assert num_still_running == 0
 
 
 def test_main_context_stop_procs_fail(caplog):
@@ -376,20 +384,36 @@ def test_main_context_stop_procs_fail(caplog):
             raise ValueError("main func value error")
 
     caplog.set_level(logging.DEBUG)
-    num_failed, num_terminated = _test_stop_procs(caplog, "FAIL", FailProcWorker)
+    (num_failed, num_terminated), num_still_running = _test_stop_procs(caplog, "FAIL", FailProcWorker)
     assert num_failed == 1
     assert num_terminated == 0
+    assert num_still_running == 0
 
 
-def test_main_context_stop_procs_hung(caplog):
+def _test_main_context_hang(cap_log, is_hard):
     class HangingProcWorker(ProcWorker):
         def main_loop(self):
-            try:
-                while True:
-                    time.sleep(5.0)
-            except TerminateInterrupt:
-                pass
+            MAX_TERMINATES = 2 if is_hard else 1
+            num_terminates = 0
+            while num_terminates < MAX_TERMINATES:
+                try:
+                    while True:
+                        time.sleep(5.0)
+                except TerminateInterrupt:
+                    num_terminates += 1
 
-    num_failed, num_terminated = _test_stop_procs(caplog, "HANG", HangingProcWorker)
+    return _test_stop_procs(cap_log, "HANG", HangingProcWorker)
+
+
+
+def test_main_context_stop_procs_hung_soft(caplog):
+    (num_failed, num_terminated), num_still_running = _test_main_context_hang(caplog, is_hard=False)
     assert num_failed == 0
     assert num_terminated == 1
+    assert num_still_running == 0
+
+def test_main_context_stop_procs_hung_hard(caplog):
+    (num_failed, num_terminated), num_still_running = _test_main_context_hang(caplog, is_hard=True)
+    assert num_failed == 0
+    assert num_terminated == 0
+    assert num_still_running == 1
