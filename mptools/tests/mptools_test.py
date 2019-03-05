@@ -358,10 +358,12 @@ def _test_stop_procs(cap_log, proc_name, worker_class):
         proc.terminate()
     return mctx._stopped_procs_result, len(mctx.procs)
 
+
 def test_main_context_exception():
     with pytest.raises(ValueError):
         with MainContext():
             raise ValueError("Yep, this is a value Error")
+
 
 def test_main_context_stop_procs_clean(caplog):
     class CleanProcWorker(ProcWorker):
@@ -405,12 +407,12 @@ def _test_main_context_hang(cap_log, is_hard):
     return _test_stop_procs(cap_log, "HANG", HangingProcWorker)
 
 
-
 def test_main_context_stop_procs_hung_soft(caplog):
     (num_failed, num_terminated), num_still_running = _test_main_context_hang(caplog, is_hard=False)
     assert num_failed == 0
     assert num_terminated == 1
     assert num_still_running == 0
+
 
 def test_main_context_stop_procs_hung_hard(caplog):
     (num_failed, num_terminated), num_still_running = _test_main_context_hang(caplog, is_hard=True)
