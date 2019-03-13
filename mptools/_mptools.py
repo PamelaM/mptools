@@ -267,6 +267,7 @@ class Proc:
         self.full_stop()
         return not exc_type
 
+
 # -- Main Wrappers
 class MainContext:
     STOP_WAIT_SECS = 3.0
