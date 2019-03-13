@@ -220,6 +220,7 @@ def proc_worker_wrapper(proc_worker_class, name, startup_evt, shutdown_evt, even
 
 class Proc:
     STARTUP_WAIT_SECS = 3.0
+    SHUTDOWN_WAIT_SECS = 3.0
 
     def __init__(self, name, worker_class, shutdown_event, event_q, *args):
         self.log = functools.partial(_logger, f'{name} Worker')
@@ -236,7 +237,7 @@ class Proc:
             self.terminate()
             raise RuntimeError(f"Process {name} failed to startup after {Proc.STARTUP_WAIT_SECS} seconds")
 
-    def full_stop(self, wait_time):
+    def full_stop(self, wait_time=SHUTDOWN_WAIT_SECS):
         self.log(logging.DEBUG, f"Proc.full_stop stoping : {self.name}")
         self.shutdown_event.set()
         self.proc.join(wait_time)
@@ -259,6 +260,12 @@ class Proc:
             self.log(logging.INFO, f"Proc.terminate terminated {self.name} after {NUM_TRIES - tries} attempt(s)")
             return True
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.full_stop()
+        return not exc_type
 
 # -- Main Wrappers
 class MainContext:
@@ -330,7 +337,12 @@ class MainContext:
     def stop_queues(self):
         num_items_left = 0
         # -- Clear the queues list and close all associated queues
+        for q in self.queues:
+            num_items_left += sum(1 for __ in q.drain())
+            q.close()
+
+        # -- Wait for all queue threads to stop
         while self.queues:
             q = self.queues.pop(0)
-            num_items_left += q.safe_close()
+            q.join_thread()
         return num_items_left

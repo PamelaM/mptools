@@ -25,6 +25,8 @@ class StatusWorker(TimerProcWorker):
         return "OKAY" if random.randrange(10) else "NOT-OKAY"
 
     def main_func(self):
+        # -- Do the things to check current status, only send the status message
+        # if status has changed
         curr_status = self.get_status()
         if curr_status != self.last_status:
             self.event_q.put(EventMessage(self.name, "STATUS", curr_status))
@@ -33,6 +35,7 @@ class StatusWorker(TimerProcWorker):
 
 class ObservationWorker(TimerProcWorker):
     def main_func(self):
+        # -- Do the things to obtain a current observation
         self.event_q.put(EventMessage(self.name, "OBSERVATION", "SOME DATA"))
 
 
@@ -44,6 +47,7 @@ class SendWorker(QueueProcWorker):
         self.send_file.close()
 
     def main_func(self, data):
+        # -- Write the messages to the log file.
         self.send_file.write(f'{data.msg_type}::{data.msg}\n')
         self.send_file.flush()
 
@@ -67,9 +71,13 @@ class ListenWorker(ProcWorker):
         self.socket.close()
 
     def _test_hook(self):
+        # -- method intended to be overriden during testing, allowing testing
+        # to interact with the main_func
         pass
 
     def main_func(self):
+        # -- Handle one connection from a client.  Each connection will
+        # handle exactly ONE request and its reply
         try:
             (clientsocket, address) = self.socket.accept()
         except socket.timeout:
