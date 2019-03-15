@@ -2,7 +2,6 @@ sudo: false
 language: python
 python:
   - "3.6"
-  - "3.7.2"
 install: pip install tox-travis
 script: tox
 env:
@@ -12,3 +11,9 @@ after_success:
 deploy:
   password:
     secure: HAKklQ+ofA8CY9Cvu5y3Smmk4hxxny85zJItk91k868zAm7hwTVH5mbC3BF5zP4NNHWMPAyswm9in7vv7fdaJbYYN2xgEtIGn5UvUBMzQIkSAifdlYTlLHlX5E3IZj3RpiPHNnEe5xyGmPG73maR5mz+uI3d+IArt3O52oS1MqQNjEXVbOUXMFsWvXzllxwa/+L4+nr1JCDsB+8ALJ/tTsg37p9YBjExlvEOa5iWFDi4MUtuKBKBu7zDIFWUtkzS76RvIKvVpsfWTwWHbSX5JSDKPS5mqNK+pkkS9c+FyhrqLtfpkZKtRnhcSjz8Kexth9Kkcu9PgleWLWZ0BRWIxvCoMraW/j/ud/KPFUaShsThAEKXKcbos+WOwJiGKjpOE/hSqPJ5bAXUxgjtCuW/iEc+9fhDldW0hPxXokaa9HIRePciEwvhhs5+mdEeNVpfePkp0y3M/ortcpR+lYInJtXX3r8jZdJ8dSpczYCyxAT8HakJOjB+w+BuUnSukzIjW3fhHbyxZq9zMxmVr4xKLqmMBjjmfFBLc5Elu4irTYau7HYsxvr2+PIvLjF1za5a2Nzn9saVNSWYDe/F53zCNrngKsyKyYDocmKTbLnegAWrbr7rDLB1tpTiZLlhYMGljAtW302/loUz53n46/FHHccq4pwoARzp7gvHZy7MZtI=
+# Enable 3.7 without globally enabling sudo and dist: xenial for other build jobs
+matrix:
+  include:
+    - python: 3.7
+      dist: xenial
+      sudo: true
