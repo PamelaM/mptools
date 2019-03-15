@@ -1,3 +1,7 @@
+# -*- coding: utf-8 -*-
+
+"""Main module."""
+
 import functools
 import logging
 import multiprocessing as mp

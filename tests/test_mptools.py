@@ -1,3 +1,8 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""Tests for `mptools` package."""
+
 import logging
 import multiprocessing as mp
 import os
