@@ -13,7 +13,7 @@ from mptools import (
     MPQueue,
     EventMessage
 )
-from mptools.tests.mptools_test import _proc_worker_wrapper_helper
+from tests.test_mptools import _proc_worker_wrapper_helper
 
 
 def test_status_worker(caplog):
