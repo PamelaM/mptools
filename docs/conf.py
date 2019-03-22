@@ -130,7 +130,7 @@ latex_elements = {
 latex_documents = [
     (master_doc, 'mptools.tex',
      u'Multiprocessing Tools Documentation',
-     u'Pamela D McA'Nulty', 'manual'),
+     u"Pamela D McA'Nulty", 'manual'),
 ]
 
 
