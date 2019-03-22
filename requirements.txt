@@ -1,1 +1,1 @@
-pytest
+pytest==4.3.1
